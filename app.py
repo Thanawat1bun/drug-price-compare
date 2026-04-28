@@ -26,11 +26,12 @@ def set_thai_font():
 
 set_thai_font()
 
-# 3. โหลดข้อมูล
+# 3. โหลดข้อมูล (เพิ่มระบบเก็บชื่อไฟล์เพื่อใช้ดู Timestamp)
 @st.cache_data
 def load_all_data():
     shops = ["VMDC", "MK", "SP", "TPD", "WELLEK", "CHAN"]
     data_dict = {}
+    file_dict = {} # <-- ตัวแปรใหม่สำหรับเก็บชื่อไฟล์
     data_dir = "." 
     all_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
     
@@ -38,7 +39,8 @@ def load_all_data():
         shop_files = [f for f in all_files if shop.lower() in f.lower()]
         if shop_files:
             shop_files.sort(reverse=True)
-            file_path = os.path.join(data_dir, shop_files[0])
+            target_file = shop_files[0]
+            file_path = os.path.join(data_dir, target_file)
             try:
                 df = pd.read_csv(file_path, encoding='utf-8-sig')
                 if 'ชื่อสินค้าที่ทำความสะอาดแล้ว' in df.columns:
@@ -49,11 +51,14 @@ def load_all_data():
                 if 'ชื่อสินค้า' in df.columns:
                     df['ชื่อสินค้า'] = df['ชื่อสินค้า'].astype(str).str.strip()
                 data_dict[shop] = df
+                file_dict[shop] = target_file # บันทึกชื่อไฟล์ของร้านนั้นๆ
             except:
                 data_dict[shop] = pd.DataFrame(columns=['ชื่อสินค้า', 'ราคา'])
+                file_dict[shop] = "ไม่พบไฟล์"
         else:
             data_dict[shop] = pd.DataFrame(columns=['ชื่อสินค้า', 'ราคา'])
-    return data_dict
+            file_dict[shop] = "ไม่พบไฟล์"
+    return data_dict, file_dict
 
 def clean_price(p):
     if pd.isna(p): return None
@@ -65,7 +70,8 @@ def clean_price(p):
     except:
         return None
 
-data_dict = load_all_data()
+# ดึงทั้งข้อมูลและชื่อไฟล์ออกมา
+data_dict, file_dict = load_all_data()
 shops = ["VMDC", "MK", "SP", "TPD", "WELLEK", "CHAN"]
 
 # --- Session State ---
@@ -150,6 +156,7 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
         selected = selections[shop]
         price_display = "-"
         p_val = None
+        date_display = "-" # ค่าเริ่มต้นของวันที่
         
         if selected != "-":
             df = data_dict[shop]
@@ -160,12 +167,21 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
                 p_val = clean_price(raw_price)
                 if p_val is not None:
                     prices_for_calc.append(p_val)
+                
+                # --- ลอจิกดึง Timestamp จากชื่อไฟล์ ---
+                raw_filename = file_dict[shop]
+                if raw_filename != "ไม่พบไฟล์":
+                    name_only = os.path.splitext(raw_filename)[0] # เอาเฉพาะชื่อไฟล์ (ไม่เอา .csv)
+                    # ตัดชื่อร้านค้าออก เพื่อให้เหลือแต่วันที่/เวลา (เช่น VMDC_20241028 -> 20241028)
+                    date_str = re.sub(f'(?i){shop}', '', name_only).strip('-_ ')
+                    date_display = date_str if date_str else name_only
         
         display_shop_name = f"{shop} (อ้างอิง)" if shop == "VMDC" else shop
         compare_list.append({
             "ร้านค้า": display_shop_name,
             "ชื่อสินค้าที่เลือก": selected if selected != "-" else "-",
-            "ราคา": price_display
+            "ราคา": price_display,
+            "วันที่อ้างอิง": date_display # เพิ่มคอลัมน์ใหม่ที่นี่
         })
         raw_prices_map.append((display_shop_name, p_val))
         
@@ -173,12 +189,19 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
     st.markdown("### 📊 ผลการเปรียบเทียบราคา:")
     st.dataframe(df_compare, use_container_width=True)
     
+    # --- ลอจิกหาชื่อสินค้าแรกที่ถูกเลือกเพื่อใช้เป็นหัวกราฟ ---
+    first_selected_product = "-"
+    for shop in shops:
+        if selections[shop] != "-":
+            first_selected_product = selections[shop]
+            break
+            
     # 7. กราฟจุดใหม่ (คำนวณราคาแนะนำ 25% จาก Min-Max)
     if prices_for_calc:
         min_p = min(prices_for_calc)
         max_p = max(prices_for_calc)
         
-        # --- ลอจิกใหม่: คำนวณจุด 25% ระหว่าง Min กับ Max ---
+        # คำนวณจุด 25% ระหว่าง Min กับ Max
         p25 = min_p + 0.25 * (max_p - min_p)
         
         st.success(f"💡 **แนะนำราคาขาย (25% ของช่วงราคาตลาด): {p25:,.2f} บาท**")
@@ -198,6 +221,11 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
             y_percents = [50] * len(v_prices)
             
         fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # --- กำหนดชื่อหัวกราฟ (Title) ---
+        if first_selected_product != "-":
+            ax.set_title(f"สินค้า: {first_selected_product}", fontsize=16, fontweight='bold', pad=15)
+            
         ax.set_ylim(-15, 115)
         ax.set_ylabel('ราคาเทียบ % (0=ถูกสุด, 100=แพงสุด)')
         
@@ -212,7 +240,7 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
             ax.text(name, y_pos - 8, name, ha='center', va='top', fontsize=12, fontweight='bold', color=color)
             ax.text(name, y_pos + 5, f"{price:,.2f}", ha='center', va='bottom', fontsize=11)
 
-        # วาดจุดแนะนำขาย (ล็อคที่ Y=25 เสมอ ซึ่งตอนนี้ค่า 811.25 จะอยู่ที่นี่พอดี)
+        # วาดจุดแนะนำขาย (ล็อคที่ Y=25 เสมอ)
         target_y_p25 = 25
         ax.plot('แนะนำขาย', target_y_p25, marker='o', color='red', markersize=12)
         ax.text('แนะนำขาย', target_y_p25 - 8, 'แนะนำขาย', ha='center', va='top', fontsize=12, fontweight='bold', color='red')
