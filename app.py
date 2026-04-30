@@ -36,10 +36,9 @@ def load_all_data():
     all_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
     
     for shop in shops:
-        # ใช้ .lower() เพื่อให้หาเจอทั้ง mk และ MK
         shop_files = [f for f in all_files if shop.lower() in f.lower()]
         if shop_files:
-            shop_files.sort(reverse=True) # เอาไฟล์ล่าสุดขึ้นก่อน
+            shop_files.sort(reverse=True)
             target_file = shop_files[0]
             file_path = os.path.join(data_dir, target_file)
             try:
@@ -59,7 +58,7 @@ def load_all_data():
         else:
             data_dict[shop] = pd.DataFrame(columns=['ชื่อสินค้า', 'ราคา'])
             file_dict[shop] = "ไม่พบไฟล์"
-    return data_dict, file_dict # <-- ต้องคืนค่า 2 ตัวนี้เสมอ
+    return data_dict, file_dict
 
 def clean_price(p):
     if pd.isna(p): return None
@@ -157,16 +156,25 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
             matched_row = df[df['ชื่อสินค้า'] == selected]
             if not matched_row.empty:
                 raw_price = matched_row['ราคา'].values[0]
-                price_display = str(raw_price)
-                p_val = clean_price(raw_price)
-                if p_val is not None:
-                    prices_for_calc.append(p_val)
+                p_val = clean_price(raw_price) # แปลงเป็นตัวเลขก่อน
                 
+                # --- ลอจิกจัดรูปแบบราคา ---
+                if p_val is not None:
+                    # ฟอร์แมตให้เป็นทศนิยม 2 ตำแหน่ง และใส่ลูกน้ำ (เช่น 1,250.00)
+                    price_display = f"{p_val:,.2f}" 
+                    prices_for_calc.append(p_val)
+                else:
+                    price_display = str(raw_price) # ถ้าไม่ใช่ตัวเลขเลยให้แสดงค่าเดิม
+                
+                # --- ลอจิกดึงเฉพาะวันที่ ---
                 raw_filename = file_dict[shop]
                 if raw_filename != "ไม่พบไฟล์":
-                    name_only = os.path.splitext(raw_filename)[0]
-                    date_str = re.sub(f'(?i){shop}', '', name_only).strip('-_ ')
-                    date_display = date_str if date_str else name_only
+                    match = re.search(r'\d{8}', raw_filename)
+                    if match:
+                        d_str = match.group()
+                        date_display = f"{d_str[6:8]}/{d_str[4:6]}/{d_str[0:4]}"
+                    else:
+                        date_display = "-"
         
         display_shop_name = f"{shop} (อ้างอิง)" if shop == "VMDC" else shop
         compare_list.append({
