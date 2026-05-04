@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import os
@@ -75,7 +74,10 @@ def clean_price(p):
 data_dict, file_dict = load_all_data()
 shops = ["VMDC", "MK", "SP", "TPD", "WELLEK", "CHAN"]
 
-# --- Session State ---
+# --- Session State (แก้ Error ตรงนี้ครับ) ---
+if "master_input" not in st.session_state:
+    st.session_state["master_input"] = ""
+    
 for shop in shops:
     if f"search_{shop}" not in st.session_state:
         st.session_state[f"search_{shop}"] = ""
@@ -83,7 +85,7 @@ for shop in shops:
         st.session_state[f"sel_{shop}"] = "-"
 
 def master_search_changed():
-    ms_val = st.session_state.master_input
+    ms_val = st.session_state.get("master_input", "") # ป้องกัน Error เวลาหาตัวแปรไม่เจอ
     for shop in shops:
         st.session_state[f"search_{shop}"] = ms_val
         st.session_state[f"sel_{shop}"] = "-"
@@ -157,17 +159,14 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
             matched_row = df[df['ชื่อสินค้า'] == selected]
             if not matched_row.empty:
                 raw_price = matched_row['ราคา'].values[0]
-                p_val = clean_price(raw_price) # แปลงเป็นตัวเลขก่อน
+                p_val = clean_price(raw_price) 
                 
-                # --- ลอจิกจัดรูปแบบราคา ---
                 if p_val is not None:
-                    # ฟอร์แมตให้เป็นทศนิยม 2 ตำแหน่ง และใส่ลูกน้ำ (เช่น 1,250.00)
                     price_display = f"{p_val:,.2f}" 
                     prices_for_calc.append(p_val)
                 else:
-                    price_display = str(raw_price) # ถ้าไม่ใช่ตัวเลขเลยให้แสดงค่าเดิม
+                    price_display = str(raw_price) 
                 
-                # --- ลอจิกดึงเฉพาะวันที่ ---
                 raw_filename = file_dict[shop]
                 if raw_filename != "ไม่พบไฟล์":
                     match = re.search(r'\d{8}', raw_filename)
