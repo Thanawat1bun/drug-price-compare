@@ -26,7 +26,7 @@ def set_thai_font():
 
 set_thai_font()
 
-# 3. โหลดข้อมูล
+# 3. โหลดข้อมูล (เพิ่มความฉลาดในการหาคอลัมน์ "ราคา")
 @st.cache_data
 def load_all_data():
     shops = ["VMDC", "MK", "SP", "TPD", "WELLEK", "CHAN"]
@@ -43,6 +43,8 @@ def load_all_data():
             file_path = os.path.join(data_dir, target_file)
             try:
                 df = pd.read_csv(file_path, encoding='utf-8-sig')
+                
+                # --- จัดการคอลัมน์ชื่อสินค้า ---
                 if 'ชื่อสินค้าที่ทำความสะอาดแล้ว' in df.columns:
                     df = df.rename(columns={'ชื่อสินค้าที่ทำความสะอาดแล้ว': 'ชื่อสินค้า'})
                 elif 'ชื่อสินค้า (และรายละเอียด)' in df.columns:
@@ -50,6 +52,15 @@ def load_all_data():
                 
                 if 'ชื่อสินค้า' in df.columns:
                     df['ชื่อสินค้า'] = df['ชื่อสินค้า'].astype(str).str.strip()
+                    
+                # --- จัดการคอลัมน์ราคา (ป้องกัน KeyError) ---
+                if 'ราคา' not in df.columns:
+                    # ค้นหาคอลัมน์ที่มีคำว่า "ราคา" หรือ "price" แล้วเปลี่ยนชื่อให้เป็น 'ราคา'
+                    for col in df.columns:
+                        if 'ราคา' in str(col) or 'price' in str(col).lower():
+                            df = df.rename(columns={col: 'ราคา'})
+                            break
+
                 data_dict[shop] = df
                 file_dict[shop] = target_file
             except:
@@ -74,7 +85,7 @@ def clean_price(p):
 data_dict, file_dict = load_all_data()
 shops = ["VMDC", "MK", "SP", "TPD", "WELLEK", "CHAN"]
 
-# --- Session State (แก้ Error ตรงนี้ครับ) ---
+# --- Session State ---
 if "master_input" not in st.session_state:
     st.session_state["master_input"] = ""
     
@@ -85,7 +96,7 @@ for shop in shops:
         st.session_state[f"sel_{shop}"] = "-"
 
 def master_search_changed():
-    ms_val = st.session_state.get("master_input", "") # ป้องกัน Error เวลาหาตัวแปรไม่เจอ
+    ms_val = st.session_state.get("master_input", "") 
     for shop in shops:
         st.session_state[f"search_{shop}"] = ms_val
         st.session_state[f"sel_{shop}"] = "-"
@@ -158,14 +169,16 @@ if st.button("📊 เปรียบเทียบราคา", type="primary
             df = data_dict[shop]
             matched_row = df[df['ชื่อสินค้า'] == selected]
             if not matched_row.empty:
-                raw_price = matched_row['ราคา'].values[0]
-                p_val = clean_price(raw_price) 
-                
-                if p_val is not None:
-                    price_display = f"{p_val:,.2f}" 
-                    prices_for_calc.append(p_val)
-                else:
-                    price_display = str(raw_price) 
+                # ป้องกันกรณีหาคอลัมน์ไม่เจอจริงๆ ให้ข้ามไป
+                if 'ราคา' in matched_row.columns:
+                    raw_price = matched_row['ราคา'].values[0]
+                    p_val = clean_price(raw_price) 
+                    
+                    if p_val is not None:
+                        price_display = f"{p_val:,.2f}" 
+                        prices_for_calc.append(p_val)
+                    else:
+                        price_display = str(raw_price) 
                 
                 raw_filename = file_dict[shop]
                 if raw_filename != "ไม่พบไฟล์":
